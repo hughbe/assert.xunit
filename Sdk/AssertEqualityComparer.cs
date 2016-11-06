@@ -59,6 +59,11 @@ namespace Xunit.Sdk
                 if (equatable != null)
                     return equatable.Equals(y);
 
+                // Implements IStructuralEquatable?
+                var structuralEquatable = x as IStructuralEquatable;
+                if (structuralEquatable != null)
+                    return structuralEquatable.Equals(y, new StructuralEquatableComparer());
+
                 // Implements IComparable<T>?
                 var comparableGeneric = x as IComparable<T>;
                 if (comparableGeneric != null)
@@ -222,6 +227,40 @@ namespace Xunit.Sdk
         public int GetHashCode(T obj)
         {
             throw new NotImplementedException();
+        }
+
+        private class StructuralEquatableComparer : IEqualityComparer
+        {
+            private static MethodInfo s_equalsMethod = typeof(StructuralEquatableComparer).GetTypeInfo().GetDeclaredMethod(nameof(EqualsGeneric));
+
+            public new bool Equals(object x, object y)
+            {
+                if (x == null)
+                {
+                    return y == null;
+                }
+                if (y == null)
+                {
+                    return false;
+                }
+
+                // We don't know the types of the objects being compared inside an IStructuralEquatable object (e.g. Tuple.Create(1, 1))
+                // However, we want to provide the full functionality of AssertEqualityComparer<T> (e.g. IEquatable<T> etc.)
+                // We can use reflection to create and invoke the specific AssertEqualityComparer<T> for each type 
+                Type genericType = x.GetType() == y.GetType() ? x.GetType() : typeof(object);
+                return (bool)s_equalsMethod.MakeGenericMethod(genericType).Invoke(null, new object[] { x, y });
+            }
+
+            public static bool EqualsGeneric<U>(U x, U y)
+            {
+                return new AssertEqualityComparer<U>().Equals(x, y);
+            }
+
+            [SuppressMessage("Code Notifications", "RECS0083:Shows NotImplementedException throws in the quick task bar", Justification = "This class is not intended to be used in a hased container")]
+            public int GetHashCode(object obj)
+            {
+                throw new NotImplementedException();
+            }
         }
     }
 }
